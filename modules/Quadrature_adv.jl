@@ -20,21 +20,37 @@ struct TriQuad
 end
 
 Q0_ref = TriQuad(
-    ######################
-    ### COMPLETARE QUI ###
-    ######################
+    "Q0",
+    2,
+    reshape([
+            1 / 3;
+            1 / 3
+        ], (2, 1)),
+    [1 / 2]
 )
 
 Q1_ref = TriQuad(
-    ######################
-    ### COMPLETARE QUI ###
-    ######################
+    "Q1",
+    2,
+    [
+        0.0 1.0 0.0;
+        0.0 0.0 1.0
+    ],
+    [
+        1/6 1/6 1/6
+    ]
 )
 
 Q2_ref = TriQuad(
-    ######################
-    ### COMPLETARE QUI ###
-    ######################
+    "Q2",
+    3,
+    [
+        0.5 0.5 0.0;
+        0.0 0.5 0.5
+    ],
+    [
+        1/6 1/6 1/6
+    ]
 )
 
 """
@@ -51,9 +67,24 @@ Perform numerical integration of a function over a mesh using a given quadrature
 - `I_approx::Float64`: The approximate integral of the function over the mesh.
 """
 function Quadrature(u, mesh::Mesh, ref_quad::TriQuad)
-    ######################
-    ### COMPLETARE QUI ###
-    ######################
+    # Compute matrices for pushforward of reference element
+    Bk, ak = get_Bk!(mesh)
+    # Compute the absolute value of the determinant
+    detBk = get_detBk!(mesh)
+    # Get quadrature points and weights on the reference element
+    points_refelem, weights_refelem = ref_quad.points, ref_quad.weights
+    points_elem = zeros(Float64, size(points_refelem))
+    u_evals = zeros(Float64, size(weights_refelem))
+
+    # Loop across all elements
+    n_tri = size(mesh.T, 2)
+    I_approx::Float64 = 0
+    for i = 1:n_tri
+        points_elem = Bk[:, :, i] * points_refelem .+ ak[:, i] # Points in the current element
+        u_evals = eval_u(u, points_elem, mesh, i, ref_quad)
+        I_approx += sum(u_evals .* weights_refelem) * detBk[i]
+    end
+    return I_approx
 end
 
 # Evaluation of a function

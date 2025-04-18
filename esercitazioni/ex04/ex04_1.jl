@@ -49,6 +49,7 @@ end
 
 # Check that the errors are small
 begin
+    println("-------------------------------------------------------------")
     println("Relative error on A:\t $(norm(A - A_gridap) / norm(A_gridap))")
     println("Relative error on b:\t $(norm(b - b_gridap) / norm(b_gridap))")
 end
