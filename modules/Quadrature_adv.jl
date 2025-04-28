@@ -163,7 +163,7 @@ Compute the H1 semi-norm error between the gradient of a function and a finite e
 - `H1_semi_error::Float64`: The H1 semi-norm error between the gradient of the exact solution and the finite element solution.
 """
 function H1semierror(∇u::Function, uh::Vector, mesh::Mesh, ref_quad::TriQuad)
-    ######################
+     ######################
     ### COMPLETARE QUI ###
     ######################
 end

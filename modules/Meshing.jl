@@ -290,6 +290,8 @@ A struct representing a mesh used in the Finite Element method.
 - `Bk`: A 3D array where each slice represents the Bk matrix of an element.
 - `detBk`: A vector where each entry represents the determinant of the Bk matrix of an element.
 - `invBk`: A 3D array where each slice represents the inverse of the Bk matrix of an element.
+- `dirichletdofs`: An array representing the Dirichlet degrees of freedom.
+- `freedofs`: An array representing the free degrees of freedom.
 """
 mutable struct Mesh
     T::Matrix{TT} where {TT<:Integer}
@@ -298,6 +300,8 @@ mutable struct Mesh
     Bk
     detBk
     invBk
+    dirichletdofs
+    freedofs
 end
 
 
@@ -314,7 +318,7 @@ Create a Mesh object.
 - `mesh::Mesh`: The created mesh object.
 """
 function Mesh(T::Matrix{TT} where {TT<:Integer}, p::Matrix{Tp} where {Tp<:Real})
-    return Mesh(T, p, nothing, nothing, nothing, nothing)
+    return Mesh(T, p, nothing, nothing, nothing, nothing, nothing, nothing)
 end
 
 """
@@ -345,6 +349,54 @@ Get the number of triangles in the mesh.
 """
 function get_ntri(mesh::Mesh)
     return size(mesh.T, 2)
+end
+
+"""
+    set_dirichletdofs!(mesh::Mesh, dirichletdofs::Array{TT} where {TT<:Integer})
+
+Set the Dirichlet degrees of freedom in the mesh.
+
+# Arguments
+- `mesh::Mesh`: The mesh object.
+- `dirichletdofs::Array{TT} where {TT<:Integer}`: The Dirichlet degrees of freedom.
+
+# Returns
+- `nothing`
+"""
+function set_dirichletdofs!(mesh::Mesh, dirichletdofs::Array{TT} where {TT<:Integer})
+    mesh.dirichletdofs = dirichletdofs
+    mesh.freedofs = setdiff(1:get_ndofs(mesh), dirichletdofs)
+    return nothing
+end
+
+"""
+    get_dirichletdofs(mesh::Mesh)
+
+Get the Dirichlet degrees of freedom from the mesh.
+
+# Arguments
+- `mesh::Mesh`: The mesh object.
+
+# Returns
+- `dirichletdofs::Array{TT} where {TT<:Integer}`: The Dirichlet degrees of freedom.
+"""
+function get_dirichletdofs(mesh::Mesh)
+    return mesh.dirichletdofs
+end
+
+"""
+    get_freedofs(mesh::Mesh)
+
+Get the free degrees of freedom from the mesh.
+
+# Arguments
+- `mesh::Mesh`: The mesh object.
+
+# Returns
+- `freedofs::Array{TT} where {TT<:Integer}`: The free degrees of freedom.
+"""
+function get_freedofs(mesh::Mesh)
+    return mesh.freedofs
 end
 
 """

@@ -68,6 +68,28 @@ function assemble_global(mesh::Mesh, local_assembler!)
     return K, f
 end
 
+"""
+    impose_dirichlet(A, b, g, mesh)
+
+Impose Dirichlet boundary conditions on the system.
+
+# Arguments
+- `A`: The global stiffness matrix.
+- `b`: The global force vector.
+- `g`: The Dirichlet boundary condition function.
+- `mesh::Mesh`: The mesh object.
+
+# Returns
+- `A_cond`: The modified stiffness matrix with Dirichlet conditions imposed.
+- `b_cond`: The modified force vector with Dirichlet conditions imposed.
+- `uh`: The solution vector with Dirichlet conditions applied.
+"""
+function impose_dirichlet(A, b, g, mesh)
+    ######################
+    ### COMPLETARE QUI ###
+    ######################
+end
+
 ########################################################################
 ########################### LOCAL ASSEMBLERS ###########################
 ########################################################################
