@@ -85,9 +85,17 @@ Impose Dirichlet boundary conditions on the system.
 - `uh`: The solution vector with Dirichlet conditions applied.
 """
 function impose_dirichlet(A, b, g, mesh)
-    ######################
-    ### COMPLETARE QUI ###
-    ######################
+    # Get tags of dirichlet dofs and free dofs
+    ndofs = get_ndofs(mesh)
+    freedofs, dirichletdofs = get_freedofs(mesh), get_dirichletdofs(mesh)
+    # Impose Dirichlet BCs by lifting
+    uh = zeros(ndofs)
+    uh[dirichletdofs] = dropdims(mapslices(g, mesh.p[:, dirichletdofs]; dims=1); dims=1)
+    # Modify the system to include Dirichlet BCs
+    A_cond = A[freedofs, freedofs]
+    b_cond = b[freedofs] - A[freedofs, dirichletdofs] * uh[dirichletdofs]
+
+    return A_cond, b_cond, uh
 end
 
 ########################################################################
@@ -167,7 +175,7 @@ function poisson_assemble_local!(Ke::Matrix, fe::Vector, mesh::Mesh, cell_index:
     fill!(Ke, 0)
     fill!(fe, 0)
     # FIXME: It is sufficient to use Q0 quadrule to assemble the stiffness matrix exactly,
-    # but here we show how to use a more general quadrature rule like Q2
+    # but here we show how to use a more general quadrature rule like Q2    
     quadrule = Q2_ref
     points_e = mesh.Bk[:, :, cell_index] * quadrule.points .+ mesh.ak[:, cell_index]
     # Evaluate basis functions and their gradient
