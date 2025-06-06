@@ -225,7 +225,62 @@ Assemble the local stiffness matrix and force vector for the transport problem.
 - `fe`: The assembled local force vector.
 """
 function transport_assemble_local!(Ke::Matrix, fe::Vector, mesh::Mesh, cell_index::Integer, f, k, β; stab = nothing, δ = 0.5)
-    ###########################################################################
-    ############################ ADD YOUR CODE HERE ###########################
-    ###########################################################################
+    n_basefuncs = 3
+    # Reset to 0
+    fill!(Ke, 0)
+    fill!(fe, 0)
+    # We use Q0 quadrule to assemble the stiffness matrix exactly
+    quadrule = Q2_ref
+    points_e = mesh.Bk[:, :, cell_index] * quadrule.points .+ mesh.ak[:, cell_index]
+    # Evaluate basis functions and their gradient
+    shapef = shapef_2DLFE(quadrule)
+    invBk = mesh.invBk[:, :, cell_index]
+    ∇shapef = mapslices(x -> invBk' * x, ∇shapef_2DLFE(quadrule), dims=(1, 2))
+    if ~isnothing(stab)
+        hₜ = maximum(norm.(eachcol(hcat(mesh.Bk[:, :, cell_index], mesh.Bk[:, 2, cell_index]-mesh.Bk[:, 1, cell_index]))))
+    end
+    if stab == "SUPG"
+        βnormInf_T = maximum(norm.(β.(eachcol(points_e)), Inf))
+        τₕ = δ * hₜ / βnormInf_T
+    end
+    # Loop over quadrature points
+    for (q_index, q_point) in enumerate(eachcol(points_e))
+        # Get the quadrature weight
+        dΩ = quadrule.weights[q_index] * mesh.detBk[cell_index]
+        # Get the value of k and β at q_point
+        k_eval = k(q_point)
+        β_eval = β(q_point) 
+        f_eval = f(q_point)
+        # Loop over test shape functions
+        for i in 1:n_basefuncs
+            v = shapef[i, q_index]
+            ∇v = ∇shapef[:, i, q_index]
+            # Add contribution to fe
+            fe[i] += f_eval * v * dΩ
+            if stab == "SUPG"
+                fe[i] += τₕ * (∇v ⋅ β_eval) * f_eval * dΩ
+            end
+            # Loop over trial shape functions
+            for j in 1:n_basefuncs
+                ∇u = ∇shapef[:, j, q_index]
+                # Add contribution to Ke
+                if stab != "NCAD"
+                    Ke[i, j] += (∇v ⋅ (k_eval * ∇u) + (β_eval ⋅ ∇u) * v) * dΩ
+                    if ~isnothing(stab)
+                        if stab == "NCSD"
+                            nβ = β_eval / norm(β_eval)
+                            Ke[i, j] += 0.5 * norm(β_eval) * hₜ * (∇v ⋅ nβ) * (∇u ⋅ nβ) * dΩ
+                        elseif stab == "SUPG"
+                            Ke[i, j] += τₕ * (∇v ⋅ β_eval) * (∇u ⋅ β_eval) * dΩ
+                        else
+                            error("Unknown stabilization")
+                        end
+                    end
+                else # stab == "NCAD"
+                    Ke[i, j] += (0.5 * norm(β_eval) * hₜ * (∇v ⋅ ∇u) + (β_eval ⋅ ∇u) * v) * dΩ
+                end
+            end
+        end
+    end
+    return Ke, fe
 end
