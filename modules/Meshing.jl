@@ -185,15 +185,100 @@ function get_nodes_connectivity(out_file)
     node_coords = node_coords[1:2, :]
 
     # Retrieve elements and their connectivity
-    elem_types, elem_tags, elem_node_tags = gmsh.model.mesh.getElements(2)
-    @assert(length(elem_types) == 1)
-    elem_tags = convert(Array{Int64}, elem_tags[1])
+    elementType = gmsh.model.mesh.getElementType("triangle", 1)  # 1st-order triangles
+    elem_tags, elem_node_tags = gmsh.model.mesh.getElementsByType(elementType)
     nelems = length(elem_tags)
-    elem_node_tags = reshape(convert(Array{Int64}, elem_node_tags[1]), 3, nelems)
+    elem_node_tags = reshape(convert(Array{Int64}, elem_node_tags), 3, nelems)
 
     gmsh.finalize()
 
     return elem_node_tags, node_coords
+end
+
+"""
+    get_edges_info(out_file)
+
+Extracts edge and element connectivity information from a mesh file using Gmsh.
+
+# Arguments
+- `out_file::String`: Path to the mesh file to be loaded.
+
+# Returns
+- `edges2nodes_mat::Matrix{Int64}`: A 2xN matrix where each column contains the node indices of an edge.
+- `elems2edges_mat::Matrix{Int64}`: A 3xM matrix where each column contains the edge indices for a triangle element.
+- `elems2orientation_mat::Matrix{Int64}`: A 3xM matrix where each column contains the orientation of the edges for a triangle element.
+
+# Description
+This function loads a mesh from the specified file using Gmsh, creates mesh edges, and extracts the connectivity between edges and nodes, as well as between elements (triangles) and edges. It also determines the orientation of each edge within each triangle. The output matrices are suitable for further finite element processing.
+"""
+function get_edges_info(out_file)
+    # Load the mesh
+    gmsh.initialize()
+    gmsh.open(out_file)
+    # Synchronize to make sure everything is loaded
+    gmsh.model.geo.synchronize()
+
+    # Create mesh edges
+    gmsh.model.mesh.createEdges()
+
+    # Get the element type for triangles (1st order)
+    elementType = gmsh.model.mesh.getElementType("triangle", 1)  # 1st-order triangles
+    elementTags, _ = gmsh.model.mesh.getElementsByType(elementType)
+    numTriangles = length(elementTags)
+
+    # Retrieve unique edge tags for each edge node set
+    elementEdgeNodes = gmsh.model.mesh.getElementEdgeNodes(elementType)
+    edgeTags, edgeOrientations = gmsh.model.mesh.getEdges(elementEdgeNodes)
+    uniqueEdgeTags = unique(edgeTags)
+
+    # Build edges2nodes (each edge tag → [n1, n2])
+    edges2nodes = Dict{Int64, Vector{Int64}}()
+    for i in 1:length(edgeTags)
+        n1 = elementEdgeNodes[2*(i-1) + 1]
+        n2 = elementEdgeNodes[2*(i-1) + 2]
+        edges2nodes[edgeTags[i]] = [n1; n2]
+    end
+
+    # Build elems2edges (each triangle → [e1, e2, e3])
+    elems2edges = Dict{Int64, Vector{Int64}}()
+    for i in 1:numTriangles
+        e1 = edgeTags[3*(i-1) + 1]
+        e2 = edgeTags[3*(i-1) + 2]
+        e3 = edgeTags[3*(i-1) + 3]
+        elems2edges[elementTags[i]] = [e1; e2; e3]
+    end
+
+    # Build elems2edges (each triangle → [e1, e2, e3])
+    elems2orientation_mat = Matrix{Int64}(undef, 3, numTriangles)
+    for i in 1:numTriangles
+        e1 = edgeOrientations[3*(i-1) + 1]
+        e2 = edgeOrientations[3*(i-1) + 2]
+        e3 = edgeOrientations[3*(i-1) + 3]
+        elems2orientation_mat[:,i] = [e1; e2; e3]
+    end
+
+    # Convert edges2nodes to matrix
+    edges2nodes_mat = Matrix{Int64}(undef, 2, length(uniqueEdgeTags))
+    for (i, e) in enumerate(uniqueEdgeTags)
+        edges2nodes_mat[:,i] = edges2nodes[e]
+    end
+
+    # Convert elems2edges to matrix
+    elems2edges_mat = Matrix{Int64}(undef, 3, numTriangles)
+    for (i, e) in enumerate(elementTags)
+        edges = elems2edges[e]
+        elems2edges_mat[:, i] = [edges[1]; edges[2]; edges[3]]
+    end
+    tmp = copy(elems2edges_mat)
+    for (i, e) in enumerate(uniqueEdgeTags)
+        elems2edges_mat[tmp .== e] .= i
+    end
+
+    # Define the orientation and the sign
+
+    gmsh.finalize()
+
+    return edges2nodes_mat, elems2edges_mat, elems2orientation_mat
 end
 
 """
@@ -292,6 +377,9 @@ A struct representing a mesh used in the Finite Element method.
 - `invBk`: A 3D array where each slice represents the inverse of the Bk matrix of an element.
 - `dirichletdofs`: An array representing the Dirichlet degrees of freedom.
 - `freedofs`: An array representing the free degrees of freedom.
+- `edges2nodes`: A matrix where each column corresponds to an edge, and each row contains to its corresponding node.
+- `elems2edges`: A matrix where each column corresponds to an element, and each row contains to its edge.
+- `elems2orientation`: A matrix where each column corresponds to an element, and each row contains the orientation of the corresponding edge.
 """
 mutable struct Mesh
     T::Matrix{TT} where {TT<:Integer}
@@ -302,6 +390,9 @@ mutable struct Mesh
     invBk
     dirichletdofs
     freedofs
+    edges2nodes
+    elems2edges
+    elems2orientation
 end
 
 
@@ -318,7 +409,7 @@ Create a Mesh object.
 - `mesh::Mesh`: The created mesh object.
 """
 function Mesh(T::Matrix{TT} where {TT<:Integer}, p::Matrix{Tp} where {Tp<:Real})
-    return Mesh(T, p, nothing, nothing, nothing, nothing, nothing, nothing)
+    return Mesh(T, p, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
 end
 
 """
@@ -349,6 +440,21 @@ Get the number of triangles in the mesh.
 """
 function get_ntri(mesh::Mesh)
     return size(mesh.T, 2)
+end
+
+"""
+    get_nedges(mesh::Mesh) -> Int
+
+Returns the number of edges in the given `mesh`. The function assumes that the mesh has an `edges2nodes` field, where each column represents an edge. The result is the total count of edges in the mesh.
+
+# Arguments
+- `mesh::Mesh`: The mesh object containing the `edges2nodes` field.
+
+# Returns
+- `Int`: The number of edges in the mesh.
+"""
+function get_nedges(mesh::Mesh)
+    return size(mesh.edges2nodes, 2)
 end
 
 """
@@ -397,6 +503,28 @@ Get the free degrees of freedom from the mesh.
 """
 function get_freedofs(mesh::Mesh)
     return mesh.freedofs
+end
+
+"""
+    set_edges_info!(mesh::Mesh, edges2nodes::Array{TT}, elems2edges::Array{TT}, elems2orientation::Array{TT}) where {TT<:Integer}
+
+Assigns edge-related connectivity information to the given `mesh` object.
+
+# Arguments
+- `mesh::Mesh`: The mesh object whose edge information will be updated.
+- `edges2nodes::Array{TT}`: An array mapping each edge to its corresponding nodes.
+- `elems2edges::Array{TT}`: An array mapping each element to its associated edges.
+- `elems2orientation::Array{TT}`: An array specifying the orientation of each edge within each element.
+
+# Returns
+- `nothing`: This function modifies the `mesh` in place and returns nothing.
+
+"""
+function set_edges_info!(mesh::Mesh, edges2nodes::Array{TT}, elems2edges::Array{TT}, elems2orientation::Array{TT}) where {TT<:Integer}
+    mesh.edges2nodes = edges2nodes
+    mesh.elems2edges = elems2edges
+    mesh.elems2orientation = elems2orientation
+    return nothing
 end
 
 """
