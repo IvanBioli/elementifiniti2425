@@ -58,10 +58,10 @@ Compute the Raviart-Thomas RT0 vector-valued shape functions on the reference tr
 - `quadrule::TriQuad`: A quadrature rule object for triangles, containing the quadrature points as a 2×n matrix.
 
 # Returns
-- `shapef::Array{Float64,3}`: A 3D array of size (2, n, 3), where:
+- `shapef::Array{Float64,3}`: A 3D array of size (2, 3, n), where:
     - The first dimension (2) corresponds to the vector components (x and y).
-    - The second dimension (n) corresponds to the number of quadrature points.
-    - The third dimension (3) corresponds to the three RT0 basis functions.
+    - The second dimension (3) corresponds to the three RT0 basis functions.
+    - The third dimension (n) corresponds to the number of quadrature points.
 
 # Details
 The RT0 basis functions on the reference triangle are:
